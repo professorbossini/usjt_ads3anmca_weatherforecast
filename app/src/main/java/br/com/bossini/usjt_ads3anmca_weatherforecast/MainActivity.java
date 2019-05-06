@@ -1,5 +1,6 @@
 package br.com.bossini.usjt_ads3anmca_weatherforecast;
 
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
@@ -12,6 +13,15 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.EditText;
 import android.widget.Toast;
+
+import com.android.volley.Request;
+import com.android.volley.RequestQueue;
+import com.android.volley.toolbox.JsonObjectRequest;
+import com.android.volley.toolbox.Volley;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -29,6 +39,7 @@ public class MainActivity extends AppCompatActivity {
     private WeatherAdapter adapter;
     private List<Weather> previsoes;
     private EditText locationEditText;
+    private RequestQueue requestQueue;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
+        requestQueue = Volley.newRequestQueue(this);
         locationEditText = findViewById(R.id.locationEditText);
         weatherRecyclerView = findViewById(R.id.weatherRecyclerView);
         previsoes = new ArrayList<>();
@@ -56,9 +68,76 @@ public class MainActivity extends AppCompatActivity {
                                         R.string.api_key
                                 )
                         );
-                obtemPrevisoesV3(endereco);
+                obtemPrevisoesV5(endereco);
             }
         });
+    }
+
+    public void obtemPrevisoesV5 (String endereco){
+        JsonObjectRequest req = new JsonObjectRequest(
+                Request.Method.GET,
+                endereco,
+                null,
+                (response) ->{
+                    lidaComJSON(response);
+                },
+                (error) ->{
+                    Toast.makeText(
+                            this,
+                            getString(R.string.read_error),
+                            Toast.LENGTH_SHORT).show();
+                }
+        );
+        requestQueue.add(req);
+    }
+
+    public void lidaComJSON (JSONObject json){
+        lidaComJSON(json.toString());
+    }
+
+    public void lidaComJSON (String resultado){
+        try {
+            previsoes.clear();
+            JSONObject json = new JSONObject(resultado);
+            JSONArray list = json.getJSONArray("list");
+            for (int i = 0; i < list.length(); i++){
+                JSONObject previsaoDaVez = list.getJSONObject(i);
+                long dt = previsaoDaVez.getLong("dt");
+                JSONObject main = previsaoDaVez.getJSONObject("main");
+                double temp_min =
+                        main.getDouble("temp_min");
+                double temp_max =
+                        main.getDouble("temp_max");
+                double humidity =
+                        main.getDouble("humidity");
+                JSONArray weather =
+                        previsaoDaVez.getJSONArray("weather");
+                JSONObject unico =
+                        weather.getJSONObject(0);
+                String description =
+                        unico.getString("description");
+                String icon =
+                        unico.getString("icon");
+                Weather w =
+                        new Weather(
+                                dt,
+                                temp_min,
+                                temp_max,
+                                humidity,
+                                description,
+                                icon
+                        );
+                previsoes.add(w);
+            }
+            adapter.notifyDataSetChanged();
+
+        } catch (JSONException e) {
+            Toast.makeText(
+                    this,
+                    getString(R.string.read_error),
+                    Toast.LENGTH_SHORT).show();
+            e.printStackTrace();
+        }
     }
 
     public void obtemPrevisoesV1(String endereco) {
@@ -114,6 +193,7 @@ public class MainActivity extends AppCompatActivity {
                 String json = resultado.toString();
                 runOnUiThread(() -> {
                     Toast.makeText(this, json, Toast.LENGTH_SHORT).show();
+                    lidaComJSON(json);
                 });
 
             } catch (IOException e) {
@@ -122,4 +202,39 @@ public class MainActivity extends AppCompatActivity {
 
         }).start();
     }
+
+    class ObtemPrevisoes extends AsyncTask <String, Void, String>{
+        @Override
+        protected String doInBackground(String... enderecos) {
+            try {
+                URL url = new URL(enderecos[0]);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                InputStream is = conn.getInputStream();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+                String linha = null;
+                StringBuilder resultado = new StringBuilder("");
+                while ((linha = reader.readLine()) != null) {
+                    resultado.append(linha);
+                }
+                String json = resultado.toString();
+                return json;
+
+            } catch (IOException e) {
+                e.printStackTrace();
+                return null;
+            }
+        }
+
+        @Override
+        protected void onPostExecute(String s) {
+            lidaComJSON(s);
+        }
+    }
+
+
+    public void obtemPrevisoesV4 (String endereco){
+        new ObtemPrevisoes().execute(endereco);
+    }
+
+
 }
